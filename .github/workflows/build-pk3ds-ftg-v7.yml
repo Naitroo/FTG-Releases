@@ -1,0 +1,54 @@
+name: Build pk3DS FTG v7
+
+on:
+  push:
+    branches:
+      - pk3ds-ftg-v7-build
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout build scripts
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned pk3DS source
+        shell: pwsh
+        run: |
+          git clone https://github.com/adhfult/pk3DS-but-mostly-for-USUM.git src
+          Set-Location src
+          git checkout 59298452d1a61d96b01a4ca99ce7900628f24a0d
+          Set-Location ..
+
+      - name: Patch FTG v7 behavior
+        shell: pwsh
+        run: python build/pk3ds/patch_pk3ds_ftg_v7.py
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Release
+        shell: pwsh
+        run: dotnet build src/pk3DS.sln --configuration Release
+
+      - name: Package FTG v7
+        shell: pwsh
+        run: |
+          $out = 'src/pk3DS.WinForms/bin/Release/net8.0-windows'
+          if (!(Test-Path $out)) { throw "Build output not found: $out" }
+          Compress-Archive -Path "$out/*" -DestinationPath 'pk3DS-for-USUM-v7-FTG.zip' -Force
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: pk3DS-for-USUM-v7-FTG
+          path: pk3DS-for-USUM-v7-FTG.zip
+          if-no-files-found: error
+          retention-days: 7
