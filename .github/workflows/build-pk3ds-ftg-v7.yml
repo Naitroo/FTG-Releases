@@ -32,13 +32,18 @@ jobs:
       - name: Work around release-only resources absent from source repo
         shell: pwsh
         run: |
-          # The pinned source references code_map.csv as an embedded resource, but that release
-          # asset is not checked into GitHub. FTG's final package is merged over the user's v6
-          # release, which already contains Resources/code_map.csv, so compile without embedding it.
+          # These assets ship in the v6 release the user supplied, but are not checked into the
+          # pinned source tree. Compile without embedding them; the final FTG package is merged
+          # over v6 so its Resources folder remains intact.
           $core = 'src/pk3DS.Core/pk3DS.Core.csproj'
           $wf = 'src/pk3DS.WinForms/pk3DS.WinForms.csproj'
-          (Get-Content $core -Raw).Replace('    <EmbeddedResource Include="Resources\code_map.csv" />' + [Environment]::NewLine, '') | Set-Content $core -NoNewline
-          (Get-Content $wf -Raw).Replace('    <EmbeddedResource Include="Resources\code_map.csv" />' + [Environment]::NewLine, '') | Set-Content $wf -NoNewline
+          $coreText = Get-Content $core -Raw
+          $coreText = $coreText.Replace('    <EmbeddedResource Include="Resources\code_map.csv" />' + [Environment]::NewLine, '')
+          Set-Content $core -Value $coreText -NoNewline
+          $wfText = Get-Content $wf -Raw
+          $wfText = $wfText.Replace('    <EmbeddedResource Include="Resources\code_map.csv" />' + [Environment]::NewLine, '')
+          $wfText = $wfText.Replace('    <EmbeddedResource Include="Resources\randsettings.txt" />' + [Environment]::NewLine, '')
+          Set-Content $wf -Value $wfText -NoNewline
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
