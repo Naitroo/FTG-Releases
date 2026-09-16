@@ -1,0 +1,81 @@
+name: Build pk3DS FTG v8
+
+on:
+  push:
+    branches: [build/pk3ds-ftg-v8]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout build recipe
+        uses: actions/checkout@v4
+
+      - name: Clone audited pk3DS base
+        shell: pwsh
+        run: |
+          git clone https://github.com/adhfult/pk3DS-but-mostly-for-USUM.git src
+          cd src
+          git checkout 59298452d1a61d96b01a4ca99ce7900628f24a0d
+
+      - name: Decode and apply FTG patch
+        shell: pwsh
+        run: |
+          $b64 = (Get-Content tools/apply_ftg.py.gz.b64 -Raw).Trim()
+          [IO.File]::WriteAllBytes("apply_ftg.py.gz", [Convert]::FromBase64String($b64))
+          gzip -d -c apply_ftg.py.gz > src/apply_ftg.py
+          cd src
+          python apply_ftg.py
+          git diff --check
+          git diff --stat
+
+      - name: Source safety checks
+        shell: pwsh
+        run: |
+          cd src
+          $u = Get-Content pk3DS.Core/Randomizers/UniversalRandomizer.cs -Raw
+          if ($u -notmatch 'FTGTrainerEngine\.ValidateTrainer') { throw 'FTG trainer validation missing' }
+          if ($u -notmatch 'ExecuteFTGUseful') { throw 'FTG useful shops missing' }
+          if ($u -notmatch 'Settings\.CompetitiveRandomizer = false') { throw 'FTG must not enable CompetitiveRandomizer' }
+          $f = Get-Content pk3DS.Core/Randomizers/FTGModeSupport.cs -Raw
+          if ($f -match '807') { throw 'FTG support contains a hardcoded 807 species limit' }
+          if ($f -notmatch 'Config\.Evolutions') { throw 'FTG evolution graph is not ROM-driven' }
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore and build Release
+        shell: pwsh
+        run: |
+          cd src
+          dotnet restore pk3DS.sln
+          dotnet build pk3DS.sln -c Release --no-restore
+
+      - name: Package executable and audit files
+        shell: pwsh
+        run: |
+          cd src
+          $out = Get-ChildItem -Path pk3DS.WinForms/bin/Release -Recurse -Filter pk3DS.exe | Select-Object -First 1
+          if (-not $out) { throw 'pk3DS.exe not found after Release build' }
+          $dir = $out.Directory.FullName
+          New-Item -ItemType Directory -Force -Path ../package | Out-Null
+          Copy-Item "$dir/*" ../package/ -Recurse -Force
+          git diff > ../package/FTG-v8-source.patch
+          @"
+          FTG v8 build base: 59298452d1a61d96b01a4ca99ce7900628f24a0d
+          Build: Release / .NET 8
+          FTG runtime guards: trainer validation + Shop.cro readback validation
+          code.bin patches are bypassed while FTG Trainer Mode is enabled.
+          CompetitiveRandomizer is explicitly disabled by FTG Trainer Mode.
+          "@ | Set-Content ../package/FTG-v8-BUILD-INFO.txt
+          Compress-Archive -Path ../package/* -DestinationPath ../pk3DS-for-USUM-v8-FTG.zip -Force
+
+      - name: Upload FTG executable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: pk3DS-for-USUM-v8-FTG
+          path: pk3DS-for-USUM-v8-FTG.zip
+          if-no-files-found: error
