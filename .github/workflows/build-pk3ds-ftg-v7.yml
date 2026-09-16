@@ -1,9 +1,9 @@
-name: Build pk3DS FTG v7
+name: Build pk3DS FTG v7.1
 
 on:
   push:
     branches:
-      - pk3ds-ftg-v7-build
+      - pk3ds-ftg-v71-build
 
 permissions:
   contents: read
@@ -29,12 +29,16 @@ jobs:
         shell: pwsh
         run: python build/pk3ds/patch_pk3ds_ftg_v7.py
 
+      - name: Patch FTG v7.1 Ultra Sun detection
+        shell: pwsh
+        run: python build/pk3ds/patch_pk3ds_ftg_v71.py
+
       - name: Work around release-only resources absent from source repo
         shell: pwsh
         run: |
           # These assets ship in the v6 release the user supplied, but are not checked into the
           # pinned source tree. Compile without embedding them; the final FTG package is merged
-          # over v6 so its Resources folder remains intact.
+          # over v6/v7 so its Resources folder remains intact.
           $core = 'src/pk3DS.Core/pk3DS.Core.csproj'
           $wf = 'src/pk3DS.WinForms/pk3DS.WinForms.csproj'
           $coreText = Get-Content $core -Raw
@@ -54,17 +58,17 @@ jobs:
         shell: pwsh
         run: dotnet build src/pk3DS.sln --configuration Release
 
-      - name: Package FTG v7 binaries
+      - name: Package FTG v7.1 binaries
         shell: pwsh
         run: |
           $out = 'src/pk3DS.WinForms/bin/Release/net8.0-windows'
           if (!(Test-Path $out)) { throw "Build output not found: $out" }
-          Compress-Archive -Path "$out/*" -DestinationPath 'pk3DS-for-USUM-v7-FTG-binaries.zip' -Force
+          Compress-Archive -Path "$out/*" -DestinationPath 'pk3DS-for-USUM-v7.1-FTG-binaries.zip' -Force
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: pk3DS-for-USUM-v7-FTG-binaries
-          path: pk3DS-for-USUM-v7-FTG-binaries.zip
+          name: pk3DS-for-USUM-v7.1-FTG-binaries
+          path: pk3DS-for-USUM-v7.1-FTG-binaries.zip
           if-no-files-found: error
           retention-days: 7
