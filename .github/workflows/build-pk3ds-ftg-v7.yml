@@ -29,6 +29,17 @@ jobs:
         shell: pwsh
         run: python build/pk3ds/patch_pk3ds_ftg_v7.py
 
+      - name: Work around release-only resources absent from source repo
+        shell: pwsh
+        run: |
+          # The pinned source references code_map.csv as an embedded resource, but that release
+          # asset is not checked into GitHub. FTG's final package is merged over the user's v6
+          # release, which already contains Resources/code_map.csv, so compile without embedding it.
+          $core = 'src/pk3DS.Core/pk3DS.Core.csproj'
+          $wf = 'src/pk3DS.WinForms/pk3DS.WinForms.csproj'
+          (Get-Content $core -Raw).Replace('    <EmbeddedResource Include="Resources\code_map.csv" />' + [Environment]::NewLine, '') | Set-Content $core -NoNewline
+          (Get-Content $wf -Raw).Replace('    <EmbeddedResource Include="Resources\code_map.csv" />' + [Environment]::NewLine, '') | Set-Content $wf -NoNewline
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -38,17 +49,17 @@ jobs:
         shell: pwsh
         run: dotnet build src/pk3DS.sln --configuration Release
 
-      - name: Package FTG v7
+      - name: Package FTG v7 binaries
         shell: pwsh
         run: |
           $out = 'src/pk3DS.WinForms/bin/Release/net8.0-windows'
           if (!(Test-Path $out)) { throw "Build output not found: $out" }
-          Compress-Archive -Path "$out/*" -DestinationPath 'pk3DS-for-USUM-v7-FTG.zip' -Force
+          Compress-Archive -Path "$out/*" -DestinationPath 'pk3DS-for-USUM-v7-FTG-binaries.zip' -Force
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: pk3DS-for-USUM-v7-FTG
-          path: pk3DS-for-USUM-v7-FTG.zip
+          name: pk3DS-for-USUM-v7-FTG-binaries
+          path: pk3DS-for-USUM-v7-FTG-binaries.zip
           if-no-files-found: error
           retention-days: 7
