@@ -1,7 +1,8 @@
 {
-  "version": "2.0.1",
-  "url": "https://github.com/Naitroo/FTG-Releases/releases/download/launcher-v2.0.1/FTG.Launcher.exe",
-  "sha256": "bb884d68da6c5b20be1dd861b6647bb64be600eb8e48e7bec48b51dd19a1d381",
+  "version": "2.1.0",
+  "url": "https://github.com/Naitroo/FTG-Releases/releases/download/launcher-v2.1.0/FTG.Launcher.exe",
+  "sha256": "e3e1e1ccd0319739037462363e5a732039b69c9b2f9e578d4b913c2436dd7bd8",
+  "size": 104989628,
   "mandatory": true,
-  "message": "FTG Launcher v2.0.1 — prueba de autoactualización."
+  "message": "FTG Launcher v2.1.0 — actualización automática verificada por SHA-256."
 }
