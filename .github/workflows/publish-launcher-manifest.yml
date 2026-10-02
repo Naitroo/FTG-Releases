@@ -1,0 +1,124 @@
+name: Publish Launcher Manifest
+
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Launcher release tag, e.g. launcher-v2.1.0"
+        required: true
+        default: "launcher-v2.1.0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: launcher-manifest
+  cancel-in-progress: false
+
+jobs:
+  publish-manifest:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'launcher-v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve launcher tag
+        id: meta
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$RELEASE_TAG"
+          fi
+          case "$TAG" in
+            launcher-v*) ;;
+            *) echo "ERROR: tag must start with launcher-v"; exit 1 ;;
+          esac
+          VERSION="${TAG#launcher-v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download launcher release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ftg-launcher
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "FTG.Launcher.exe" --dir /tmp/ftg-launcher
+          test -f /tmp/ftg-launcher/FTG.Launcher.exe || {
+            echo "ERROR: release $TAG must contain an asset named exactly FTG.Launcher.exe"
+            exit 1
+          }
+
+      - name: Verify launcher asset and build manifest
+        id: hash
+        shell: bash
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          SHA="$(sha256sum /tmp/ftg-launcher/FTG.Launcher.exe | awk '{print $1}')"
+          SIZE="$(stat -c%s /tmp/ftg-launcher/FTG.Launcher.exe)"
+          test "${#SHA}" -eq 64
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          export SHA SIZE
+          mkdir -p /tmp/manifest
+          python3 - <<'PY'
+          import json, os
+          tag = os.environ["TAG"]
+          version = os.environ["VERSION"]
+          sha = os.environ["SHA"]
+          size = int(os.environ["SIZE"])
+          data = {
+              "version": version,
+              "url": f"https://github.com/Naitroo/FTG-Releases/releases/download/{tag}/FTG.Launcher.exe",
+              "sha256": sha,
+              "size": size,
+              "mandatory": True,
+              "message": f"FTG Launcher v{version} — actualización automática verificada por SHA-256."
+          }
+          with open("/tmp/manifest/latest.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+              f.write("\n")
+          PY
+
+      - name: Checkout manifest repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Publish launcher/latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p launcher
+          cp /tmp/manifest/latest.json launcher/latest.json
+          git config user.name "FTG Launcher Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add launcher/latest.json
+          if git diff --cached --quiet; then
+            echo "Manifest already up to date."
+            exit 0
+          fi
+          git commit -m "Update launcher manifest to v${{ steps.meta.outputs.version }}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "FTG Launcher manifest published" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version: ${{ steps.meta.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag: ${{ steps.meta.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: ${{ steps.hash.outputs.sha256 }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Size: ${{ steps.hash.outputs.size }} bytes" >> "$GITHUB_STEP_SUMMARY"
